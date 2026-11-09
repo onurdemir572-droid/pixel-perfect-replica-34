@@ -133,6 +133,7 @@ function Toggle({ on, label }: { on?: boolean; label: string }) {
 function Index() {
   const [sel, setSel] = useState(14);
   const [tab, setTab] = useState("all");
+  const cur = rows[sel] ?? rows[0]!;
   const stat = [
     { t: "Toplam Satır", v: "1.352", p: "", cls: "bg-surface", ic: <Search className="h-6 w-6 text-primary" />, icb: "bg-info-soft border-2 border-primary", tc: "text-foreground" },
     { t: "Aktarıma Hazır", v: "1.156", p: "(%85,5)", cls: "bg-success-soft", ic: <Check className="h-5 w-5 text-surface" strokeWidth={3} />, icb: "bg-success", tc: "text-foreground" },
@@ -261,14 +262,14 @@ function Index() {
               <div className="flex items-center justify-between"><h2 className="text-[14px] font-bold">Ürün Düzenle</h2><X className="h-4 w-4" /></div>
               <div className="mt-3 flex justify-between">
                 <div>
-                  <div className="text-[14px] font-bold">{rows[sel].name}</div>
-                  <div className="text-[10px] text-foreground/70">{rows[sel].code}</div>
+                  <div className="text-[14px] font-bold">{cur.name}</div>
+                  <div className="text-[10px] text-foreground/70">{cur.code}</div>
                   <div className="mt-2 flex gap-2">
-                    <StatusPill s={rows[sel].status} />
+                    <StatusPill s={cur.status} />
                     <span className="rounded bg-muted px-1.5 py-0.5 text-[10px]">Excel Satırı: {sel + 1}</span>
                   </div>
                 </div>
-                <img src={drill} alt={rows[sel].name} width={56} height={56} className="h-14 w-14 object-contain" />
+                <img src={drill} alt={cur.name} width={56} height={56} className="h-14 w-14 object-contain" />
               </div>
               <div className="mt-3 flex gap-3 border-b border-border text-[10px]">
                 {["Temel Bilgiler", "Varyantlar", "Ambalaj & Paketleme", "Diğer"].map((t, i) => (
@@ -277,12 +278,12 @@ function Index() {
               </div>
               <h3 className="mt-3 text-[12px] font-semibold">Temel Bilgiler</h3>
               <div className="mt-2 space-y-2">
-                <Field label="Ürün Kodu" req><Inp v={rows[sel].code} /></Field>
-                <Field label="Ürün Adı" req><Inp v={rows[sel].name} /></Field>
-                <Field label="Marka" req><div className="flex gap-1.5"><SelL v={rows[sel].brand} className="flex-1" /><button className="flex h-7 items-center gap-1 rounded border border-border px-1.5 text-[10px] text-primary"><Plus className="h-3 w-3" />Yeni Marka</button></div></Field>
+                <Field label="Ürün Kodu" req><Inp v={cur.code} /></Field>
+                <Field label="Ürün Adı" req><Inp v={cur.name} /></Field>
+                <Field label="Marka" req><div className="flex gap-1.5"><SelL v={cur.brand} className="flex-1" /><button className="flex h-7 items-center gap-1 rounded border border-border px-1.5 text-[10px] text-primary"><Plus className="h-3 w-3" />Yeni Marka</button></div></Field>
                 <Field label="Kategori"><SelL v="Hırdavat > El Aletleri" /></Field>
                 <Field label="Alt Kategori"><SelL v="Matkap Aksesuarları" /></Field>
-                <Field label="Birim" req><div className="flex items-center gap-1.5"><SelL v={rows[sel].unit} className="w-16" /><span className="text-[10px]">Çevrim Birimi</span><Inp v="SET" className="w-10" /></div></Field>
+                <Field label="Birim" req><div className="flex items-center gap-1.5"><SelL v={cur.unit} className="w-16" /><span className="text-[10px]">Çevrim Birimi</span><Inp v="SET" className="w-10" /></div></Field>
                 <Field label="Barkod"><div className="flex items-center gap-1.5"><div className="flex h-7 flex-1 items-center justify-between rounded border border-border px-2 text-[11px]">8691234567890<ScanBarcode className="h-3.5 w-3.5 text-primary" /></div><TriangleAlert className="h-4 w-4 text-danger" /></div></Field>
                 <Field label="Açıklama"><div className="h-9 rounded border border-border px-2 py-1.5 text-[10px] text-muted-foreground">Ürün açıklaması (isteğe bağlı)</div></Field>
               </div>
@@ -290,7 +291,7 @@ function Index() {
             <Section title="Ambalaj & Paketleme">
               <div className="grid grid-cols-[1fr_1fr_1fr_14px] gap-1.5 text-[10px]">
                 <span className="font-semibold">Ambalaj</span><span className="font-semibold">İçerik Miktarı</span><span className="font-semibold">Satış Birimi</span><span />
-                {[["Set", "1"], ["Kutu", "10"], ["Koli", "50"]].map(([a, b]) => (
+                {([["Set", "1"], ["Kutu", "10"], ["Koli", "50"]] as const).map(([a, b]) => (
                   <Fragment key={a}><SelL v={a} /><Inp v={b} /><SelL v="ADET" /><Trash2 className="h-3.5 w-3.5 self-center text-danger" /></Fragment>
                 ))}
               </div>
@@ -310,9 +311,9 @@ function Index() {
             </Section>
             <Section title="Fiyat ve Vergi">
               <div className="grid grid-cols-3 gap-2 text-[10px]">
-                <div>Alış Fiyatı (₺)<Inp v={rows[sel].buy} className="mt-1" /></div>
-                <div>Satış Fiyatı (₺)<Inp v={rows[sel].sell} className="mt-1" /></div>
-                <div>KDV Oranı<SelL v={rows[sel].kdv} className="mt-1" /></div>
+                <div>Alış Fiyatı (₺)<Inp v={cur.buy} className="mt-1" /></div>
+                <div>Satış Fiyatı (₺)<Inp v={cur.sell} className="mt-1" /></div>
+                <div>KDV Oranı<SelL v={cur.kdv} className="mt-1" /></div>
               </div>
               <div className="mt-2 grid grid-cols-[1fr_2fr] gap-2 text-[10px]">
                 <div>Para Birimi<SelL v="TRY" className="mt-1" /></div>
