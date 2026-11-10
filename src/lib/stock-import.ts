@@ -93,14 +93,37 @@ export function mapHeader(h: string): keyof Product | undefined {
   return ALIASES[k];
 }
 
-export function rowsToProducts(records: Record<string, unknown>[]): Product[] {
+export type Mapping = Record<string, keyof Product | "">;
+export const REQUIRED_FIELDS: (keyof Product)[] = ["code", "name", "unit", "sell"];
+export const MAPPABLE_FIELDS: (keyof Product)[] = [
+  "code", "name", "brand", "unit", "pack", "qty", "buy", "sell", "kdv", "barcode", "category", "stock", "minStock", "description",
+];
+
+export function autoMapping(headers: string[]): Mapping {
+  const used = new Set<string>();
+  const m: Mapping = {};
+  for (const h of headers) {
+    const f = mapHeader(h);
+    m[h] = f && !used.has(f) ? f : "";
+    if (f) used.add(f);
+  }
+  return m;
+}
+
+export function missingRequired(m: Mapping): (keyof Product)[] {
+  const vals = new Set(Object.values(m));
+  return REQUIRED_FIELDS.filter((f) => !vals.has(f));
+}
+
+export function rowsToProducts(records: Record<string, unknown>[], mapping?: Mapping): Product[] {
   return records.map((r, i) => {
     const p: Product = {
       id: i + 1, code: "", name: "", brand: "", unit: "ADET", pack: "–", qty: 0, buy: 0, sell: 0,
       kdv: 20, barcode: "", category: "Diğer", stock: 0, minStock: 0, description: "", active: true,
     };
     for (const [h, v] of Object.entries(r)) {
-      const f = mapHeader(h);
+      const f = mapping ? mapping[h] || undefined : mapHeader(h);
+      if (f === "minStock") { p.minStock = parseNum(v); continue; }
       if (!f) continue;
       if (f === "qty" || f === "buy" || f === "sell" || f === "kdv" || f === "stock") (p[f] as number) = parseNum(v);
       else if (f !== "id" && f !== "active" && f !== "minStock") (p[f] as string) = String(v ?? "").trim();

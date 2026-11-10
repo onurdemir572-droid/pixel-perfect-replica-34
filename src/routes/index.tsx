@@ -8,7 +8,7 @@ import {
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import {
-  CATEGORIES, KDV, PACKS, UNITS, fmt, mapHeader, rowsToProducts, validate,
+  CATEGORIES, KDV, MAPPABLE_FIELDS, PACKS, REQUIRED_FIELDS, UNITS, autoMapping, fmt, missingRequired, rowsToProducts, validate, type Mapping,
   type Checked, type Product, type Status,
 } from "@/lib/stock-import";
 import { SAMPLE_FILE, sampleProducts } from "@/lib/sample-stock";
@@ -85,7 +85,9 @@ function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) =
 function Index() {
   const [step, setStep] = useState(3);
   const [fileName, setFileName] = useState(SAMPLE_FILE);
-  const [headers, setHeaders] = useState<string[]>(Object.values(FIELD_LABELS) as string[]);
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [records, setRecords] = useState<Record<string, unknown>[]>([]);
+  const [mapping, setMapping] = useState<Mapping>({});
   const [products, setProducts] = useState<Product[]>(sampleProducts);
   const [selId, setSelId] = useState<number | null>(15);
   const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set());
@@ -129,8 +131,10 @@ function Index() {
       const ws = wb.Sheets[wb.SheetNames[0]!]!;
       const recs = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
       if (!recs.length) return toast.error("Dosyada satır bulunamadı");
-      setHeaders(Object.keys(recs[0]!));
-      setProducts(rowsToProducts(recs));
+      const hs = Object.keys(recs[0]!);
+      setHeaders(hs);
+      setRecords(recs);
+      setMapping(autoMapping(hs));
       setFileName(f.name);
       setSelId(null);
       setPage(1);
@@ -171,8 +175,22 @@ function Index() {
     setImported(counts.Hazır + counts.Öneri + counts.Kontrol);
     setStep(5);
   }
+  function applyMapping() {
+    const miss = missingRequired(mapping);
+    if (miss.length) return toast.error("Zorunlu alanlar eşleşmedi", { description: miss.map((f) => FIELD_LABELS[f]).join(", ") });
+    if (records.length) setProducts(rowsToProducts(records, mapping));
+    setPage(1); setTab("all"); setStep(3);
+  }
+  function setMap(h: string, f: keyof Product | "") {
+    setMapping((m) => {
+      const n = { ...m };
+      if (f) for (const k of Object.keys(n)) if (n[k] === f) n[k] = "";
+      n[h] = f;
+      return n;
+    });
+  }
   function reset() {
-    setProducts(sampleProducts()); setFileName(SAMPLE_FILE); setStep(3); setSelId(15); setTab("all"); setQ(""); setPage(1);
+    setProducts(sampleProducts()); setFileName(SAMPLE_FILE); setHeaders([]); setRecords([]); setMapping({}); setStep(3); setSelId(15); setTab("all"); setQ(""); setPage(1);
   }
 
   const allVisibleChecked = visible.length > 0 && visible.every((p) => checkedIds.has(p.id));
@@ -220,25 +238,87 @@ function Index() {
             </div>
           )}
 
-          {step === 2 && (
+          {step === 2 && (() => {
+            const miss = missingRequired(mapping);
+            const mappedCount = Object.values(mapping).filter(Boolean).length;
+            return (
             <div className="mt-4 rounded-lg border border-border bg-surface p-4">
-              <h2 className="text-[14px] font-bold">Sütun Eşleştirme</h2>
-              <p className="text-[11px] text-muted-foreground">Dosyanızdaki sütunlar otomatik olarak sistem alanlarıyla eşleştirildi.</p>
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                {headers.map((h) => {
-                  const f = mapHeader(h);
-                  return (
-                    <div key={h} className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-[12px]">
-                      <span className="flex-1 truncate font-medium">{h}</span><ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
-                      {f ? <span className="flex flex-1 items-center gap-1 text-success"><Check className="h-3.5 w-3.5" />{FIELD_LABELS[f] ?? f}</span>
-                        : <span className="flex-1 text-warning">Eşleşmedi (atlanacak)</span>}
-                    </div>
-                  );
-                })}
+              <div className="flex items-start gap-3">
+                <div className="flex-1">
+                  <h2 className="text-[14px] font-bold">Sütun Eşleştirme</h2>
+                  <p className="text-[11px] text-muted-foreground">Dosyanızdaki her sütunun sistemde hangi alana aktarılacağını seçin. Otomatik eşleşmeleri kontrol edin.</p>
+                </div>
+                <button onClick={() => setMapping(autoMapping(headers))} className="flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-[11px] font-medium"><Zap className="h-3.5 w-3.5" />Otomatik eşleştir</button>
+                <button onClick={() => setMapping(Object.fromEntries(headers.map((h) => [h, ""])))} className="flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-[11px] font-medium"><RotateCcw className="h-3.5 w-3.5" />Temizle</button>
               </div>
-              <div className="mt-4 flex justify-end"><button onClick={() => setStep(3)} className="flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-[12px] font-semibold text-primary-foreground">Verileri Analiz Et<ArrowRight className="h-4 w-4" /></button></div>
+              {!headers.length ? (
+                <div className="mt-4 rounded-md bg-info-soft p-6 text-center text-[12px]">
+                  Örnek liste zaten eşleştirilmiş durumda. Kendi dosyanız için <button onClick={() => fileRef.current?.click()} className="font-semibold text-primary underline">dosya yükleyin</button>.
+                </div>
+              ) : (<>
+                <div className="mt-3 grid grid-cols-3 gap-2.5">
+                  <div className="rounded-md bg-muted/60 p-2.5 text-[11px]"><div className="text-muted-foreground">Dosyadaki sütun</div><b className="text-[16px]">{headers.length}</b></div>
+                  <div className="rounded-md bg-success-soft p-2.5 text-[11px]"><div className="text-muted-foreground">Eşleşen</div><b className="text-[16px] text-success">{mappedCount}</b></div>
+                  <div className="rounded-md bg-warning-soft p-2.5 text-[11px]"><div className="text-muted-foreground">Atlanacak</div><b className="text-[16px] text-warning">{headers.length - mappedCount}</b></div>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10px]">
+                  <span className="font-semibold">Zorunlu alanlar:</span>
+                  {REQUIRED_FIELDS.map((f) => (
+                    <span key={f} className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-medium ${miss.includes(f) ? "bg-danger-soft text-danger" : "bg-success-soft text-success"}`}>
+                      {miss.includes(f) ? <X className="h-3 w-3" /> : <Check className="h-3 w-3" />}{FIELD_LABELS[f]}
+                    </span>
+                  ))}
+                </div>
+                <table className="mt-3 w-full text-[11px]">
+                  <thead><tr className="border-y border-border bg-muted/50 text-left text-[10px] font-semibold">
+                    <th className="px-2 py-1.5">Excel Sütunu</th><th className="w-6" /><th className="w-[200px]">Sistem Alanı</th><th className="px-2">Örnek Değerler (ilk 3 satır)</th><th className="w-20">Durum</th>
+                  </tr></thead>
+                  <tbody>
+                    {headers.map((h) => {
+                      const f = mapping[h] ?? "";
+                      const samples = records.slice(0, 3).map((r) => String(r[h] ?? "")).filter(Boolean);
+                      return (
+                        <tr key={h} className="h-9 border-b border-border/60">
+                          <td className="px-2 font-medium"><FileSpreadsheet className="mr-1.5 inline h-3.5 w-3.5 text-success" />{h}</td>
+                          <td><ArrowRight className="h-3.5 w-3.5 text-muted-foreground" /></td>
+                          <td>
+                            <select value={f} onChange={(e) => setMap(h, e.target.value as keyof Product | "")} className={`${inputCls} ${f ? "" : "text-muted-foreground"}`}>
+                              <option value="">— Bu sütunu atla —</option>
+                              {MAPPABLE_FIELDS.map((k) => (
+                                <option key={k} value={k}>{FIELD_LABELS[k]}{REQUIRED_FIELDS.includes(k) ? " *" : ""}{Object.entries(mapping).some(([hh, v]) => v === k && hh !== h) ? " (kullanımda)" : ""}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="truncate px-2 text-muted-foreground">{samples.join(" · ") || "—"}</td>
+                          <td>{f ? <span className="inline-flex items-center gap-1 text-success"><CheckCircle2 className="h-3.5 w-3.5" />Eşleşti</span> : <span className="text-warning">Atlanacak</span>}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {records.length > 0 && (
+                  <div className="mt-4">
+                    <h3 className="text-[12px] font-semibold">Aktarım önizlemesi</h3>
+                    <div className="mt-2 overflow-x-auto rounded-md border border-border">
+                      <table className="w-full text-[11px]">
+                        <thead><tr className="bg-muted/50 text-left text-[10px]">{(["code", "name", "brand", "unit", "pack", "buy", "sell", "kdv"] as const).map((k) => <th key={k} className="px-2 py-1.5">{FIELD_LABELS[k]}</th>)}</tr></thead>
+                        <tbody>{rowsToProducts(records.slice(0, 3), mapping).map((p) => (
+                          <tr key={p.id} className="border-t border-border/60">
+                            <td className="px-2 py-1">{p.code || "—"}</td><td className="px-2">{p.name || "—"}</td><td className="px-2">{p.brand || "—"}</td><td className="px-2">{p.unit}</td><td className="px-2">{p.pack}</td><td className="px-2">{fmt(p.buy)}</td><td className="px-2">{fmt(p.sell)}</td><td className="px-2">%{p.kdv}</td>
+                          </tr>))}</tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </>)}
+              <div className="mt-4 flex items-center justify-between">
+                <button onClick={() => setStep(1)} className="flex h-9 items-center gap-2 rounded-md border border-border px-4 text-[12px] font-semibold"><ChevronLeft className="h-4 w-4" />Önceki Adım</button>
+                {headers.length > 0 && miss.length > 0 && <span className="text-[11px] text-danger">Devam etmek için zorunlu alanları eşleştirin.</span>}
+                <button onClick={applyMapping} disabled={headers.length > 0 && miss.length > 0} className="flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-[12px] font-semibold text-primary-foreground disabled:opacity-50">Verileri Analiz Et<ArrowRight className="h-4 w-4" /></button>
+              </div>
             </div>
-          )}
+            );
+          })()}
 
           {step === 5 && (
             <div className="mt-4 flex h-[420px] flex-col items-center justify-center gap-3 rounded-lg border border-border bg-surface text-center">
